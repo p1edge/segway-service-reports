@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>服务商指标报表</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="china.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --bg:#0d1322; --neon:#00d4ff; --neon2:#0066ff; --text:#eaf0fb; --dim:#9fb0cc; --border:rgba(0,212,255,0.28); --panel:rgba(255,255,255,0.05); }
+body { font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); min-height:100vh; padding:24px; position:relative; }
+body::before { content:""; position:fixed; inset:0; z-index:-1; background-image:linear-gradient(rgba(0,212,255,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,0.06) 1px,transparent 1px); background-size:40px 40px; animation:g 30s linear infinite; pointer-events:none; }
+body::after { content:""; position:fixed; inset:0; z-index:-1; background:radial-gradient(circle at 15% 20%,rgba(0,102,255,0.16),transparent 38%),radial-gradient(circle at 85% 80%,rgba(0,212,255,0.12),transparent 38%); pointer-events:none; }
+@keyframes g { to { background-position:40px 40px; } }
+.container { max-width:1280px; margin:0 auto; }
+h1 { font-size:22px; font-weight:400; color:#f0f5ff; margin-bottom:16px; letter-spacing:2px; }
+h1 b { color:var(--neon); font-weight:600; text-shadow:0 0 10px rgba(0,212,255,0.5); }
+.card { background:var(--panel); backdrop-filter:blur(10px); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow:0 0 24px rgba(0,212,255,0.06); position:relative; }
+.card::before { content:""; position:absolute; top:0; left:18px; right:18px; height:1px; background:linear-gradient(90deg,transparent,var(--neon),transparent); opacity:0.5; }
+.upload { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.upload label { font-size:12px; color:var(--dim); letter-spacing:1px; }
+.upload .file { display:flex; flex-direction:column; gap:4px; }
+.upload input[type=file] { font-size:12px; color:var(--text); }
+.upload input[type=file]::file-selector-button { background:linear-gradient(135deg,var(--neon2),var(--neon)); color:#001020; border:none; border-radius:6px; padding:6px 14px; cursor:pointer; font-weight:600; margin-right:10px; }
+.btn { padding:8px 20px; border:1px solid var(--border); border-radius:8px; font-size:13px; cursor:pointer; font-weight:600; letter-spacing:1px; background:linear-gradient(135deg,var(--neon2),var(--neon)); color:#001020; transition:all 0.25s; }
+.btn:hover { box-shadow:0 0 20px rgba(0,212,255,0.5); }
+.btn:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-clear { background:rgba(0,0,0,0.3); color:var(--text); border:1px solid var(--border); }
+.status { font-size:13px; color:var(--dim); margin-left:8px; }
+/* Tabs */
+.tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:0; }
+.tab { padding:10px 16px; background:transparent; border:none; border-bottom:2px solid transparent; color:var(--dim); cursor:pointer; font-size:13px; font-weight:600; letter-spacing:1px; transition:all 0.2s; }
+.tab:hover { color:var(--text); }
+.tab.active { color:var(--neon); border-bottom-color:var(--neon); text-shadow:0 0 8px rgba(0,212,255,0.4); }
+.pane { display:none; }
+.pane.active { display:block; }
+/* Report */
+.report h2 { font-size:16px; color:#f0f5ff; margin-bottom:6px; letter-spacing:1px; }
+.report h2 b { color:var(--neon); }
+.formula { font-size:12px; color:var(--dim); margin-bottom:10px; line-height:1.6; font-family:Consolas,monospace; }
+.report-grid { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+.report-grid .left { flex:0 0 380px; max-width:100%; }
+.report-grid .right { flex:1; min-width:280px; }
+.summary { display:flex; gap:12px; flex-wrap:wrap; padding:8px 12px; background:rgba(0,212,255,0.07); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; font-size:13px; }
+.summary .item { color:var(--dim); }
+.summary .item b { color:#f0f5ff; font-family:Consolas,monospace; font-weight:600; }
+.chart-box { background:rgba(0,0,0,0.25); border:1px solid var(--border); border-radius:8px; padding:12px; height:320px; position:relative; }
+.chart-box canvas { max-height:296px; }
+.filter-bar { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.filter-bar label { font-size:11px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; }
+.search-input { flex:1; min-width:160px; max-width:320px; padding:7px 10px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; outline:none; transition:all 0.2s; }
+.search-input:focus { border-color:var(--neon); box-shadow:0 0 10px rgba(0,212,255,0.25); }
+.result-count { font-size:11px; color:var(--dim); }
+.table-scroll { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th,td { padding:3px 4px; text-align:left; border-bottom:1px solid rgba(0,212,255,0.12); }
+td { color:var(--text); white-space:nowrap; }
+th { background:rgba(0,212,255,0.08); color:var(--neon); font-weight:600; font-size:11px; letter-spacing:0; text-transform:uppercase; white-space:normal; word-break:keep-all; }
+th .qmark { display:inline-block; width:15px; height:15px; line-height:15px; text-align:center; border-radius:50%; background:rgba(0,212,255,0.25); color:#eaf0fb; font-size:10px; cursor:help; margin-left:5px; text-transform:none; font-weight:700; position:relative; }
+th .qmark::after { content:attr(data-tip); position:absolute; top:22px; right:-10px; background:#0d1424; color:#eaf0fb; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:12px; line-height:1.6; white-space:normal; width:320px; box-shadow:0 6px 20px rgba(0,0,0,0.6); z-index:50; opacity:0; visibility:hidden; transition:opacity 0.2s; pointer-events:none; font-weight:400; letter-spacing:0; }
+th .qmark:hover::after { opacity:1; visibility:visible; }
+td { color:var(--text); }
+td.num { font-family:Consolas,monospace; text-align:left; }
+td .prov-cell { display:inline-block; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle; cursor:help; }
+td.rate { color:var(--neon); font-family:Consolas,monospace; font-weight:700; }
+td.s100 { color:#00e676; font-family:Consolas,monospace; font-weight:700; text-shadow:0 0 6px rgba(0,230,118,0.5); }
+td.s80 { color:var(--neon); font-family:Consolas,monospace; font-weight:700; }
+td.s60 { color:#ff9a3c; font-family:Consolas,monospace; font-weight:700; }
+td.s0 { color:#ff4d6d; font-family:Consolas,monospace; font-weight:700; }
+td.total { color:#00e676; font-family:Consolas,monospace; font-weight:700; font-size:13px; }
+.pagination { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; flex-wrap:wrap; }
+.pagination button { padding:3px 10px; border:1px solid var(--border); border-radius:6px; background:rgba(0,0,0,0.3); cursor:pointer; font-size:12px; color:var(--text); transition:all 0.2s; }
+.pagination button:hover:not(:disabled) { border-color:var(--neon); color:var(--neon); }
+.pagination button:disabled { color:#3a4660; cursor:not-allowed; }
+.pagination .page-info { color:var(--dim); }
+.size-select { padding:3px 8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; outline:none; margin-left:auto; }
+.size-select option { background:#0d1424; }
+th.sortable { cursor:pointer; }
+th.sortable:hover { color:#fff; }
+th.sort-active { color:#00e676; text-shadow:0 0 6px rgba(0,230,118,0.4); }
+.btn-suggest { padding:3px 10px; background:rgba(0,0,0,0.3); border:1px solid var(--neon); border-radius:6px; color:var(--neon); font-size:11px; cursor:pointer; transition:all 0.2s; }
+.btn-suggest:hover { background:rgba(0,212,255,0.12); box-shadow:0 0 10px rgba(0,212,255,0.3); }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+.modal-overlay.show { display:flex; }
+.modal { background:#0d1424; border:1px solid var(--border); border-radius:12px; padding:24px; width:560px; max-width:92vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 0 40px rgba(0,212,255,0.15); }
+.modal h3 { font-size:15px; color:var(--neon); margin-bottom:12px; letter-spacing:1px; word-break:break-all; }
+.sug-item { padding:10px 12px; background:rgba(0,212,255,0.04); border:1px solid rgba(0,212,255,0.1); border-radius:8px; margin-bottom:8px; font-size:13px; line-height:1.6; color:var(--text); }
+.sug-item .metric { color:var(--neon); font-family:Consolas,monospace; }
+.modal .btn-row { justify-content:flex-end; margin-top:12px; }
+::-webkit-scrollbar { width:8px; height:8px; }
+::-webkit-scrollbar-track { background:#0a0e1a; }
+::-webkit-scrollbar-thumb { background:rgba(0,212,255,0.2); border-radius:4px; }
+.empty { color:var(--dim); font-size:13px; text-align:center; padding:40px; }
+/* 网络共享开关 */
+.toggle-switch { position:relative; display:inline-block; width:46px; height:24px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#1a2030; border:1px solid var(--border); border-radius:24px; transition:0.3s; }
+.toggle-slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; bottom:3px; background:#5a6680; border-radius:50%; transition:0.3s; }
+.toggle-switch input:checked + .toggle-slider { background:rgba(0,230,118,0.2); border-color:#00e676; box-shadow:0 0 12px rgba(0,230,118,0.3); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(22px); background:#00e676; box-shadow:0 0 8px #00e676; }
+.share-row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+.share-ip { color:var(--neon); font-family:Consolas,monospace; font-size:12px; word-break:break-all; }
+.dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+.dot.on { background:#00e676; box-shadow:0 0 6px #00e676; }
+.dot.off { background:#3a4660; }
+.logout-fixed { float:right; margin:4px 0 12px 0; padding:8px 18px; background:rgba(0,0,0,0.4); border:1px solid var(--border); border-radius:8px; color:#eaf0fb; font-size:13px; cursor:pointer; letter-spacing:1px; transition:all 0.2s; }
+.logout-fixed:hover { border-color:#ff4d6d; color:#ff4d6d; box-shadow:0 0 12px rgba(255,77,109,0.3); }
+</style>
+</head>
+<body>
+<div class="container">
+  <button class="logout-fixed" id="logoutBtn" style="display:none;" onclick="logout()">退出登录</button>
+  <h1>国内短交通服务商 <b>指标报表</b></h1>
+
+  <div class="card">
+    <div class="upload">
+      <div class="file"><label>工单统计报表</label><input type="file" id="f1" accept=".xlsx,.xls"></div>
+      <div class="file"><label>case 统计报表</label><input type="file" id="f2" accept=".xlsx,.xls"></div>
+      <div class="file"><label>服务评价报表</label><input type="file" id="f3" accept=".xlsx,.xls"></div>
+      <button class="btn" id="genBtn" onclick="generate()">生成报表</button>
+      <button class="btn btn-clear" id="reStatBtn" onclick="reStat()" style="display:none;">重新统计</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="upload">
+      <div class="file"><label>API 地址</label><input type="text" id="aiBase" style="width:280px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;"></div>
+      <div class="file"><label>密钥</label><input type="password" id="aiKey" style="width:280px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:Consolas,monospace;"></div>
+      <button class="btn btn-clear" onclick="saveAiSettings()" style="padding:7px 16px;font-size:12px;">保存</button>
+      <span class="status" id="aiStatus" style="font-size:11px;"></span>
+    </div>
+    <div style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.5;">输入 AI 服务的地址和密钥，可启用 AI 意见分析功能（点服务商"意见"按钮时调用 AI 生成整改建议）；留空则用规则模板。</div>
+  </div>
+
+  <div class="card" id="shareCard" style="display:none;">
+    <div class="share-row">
+      <span style="font-size:13px;color:var(--text);font-weight:600;letter-spacing:1px;">网络共享</span>
+      <label class="toggle-switch"><input type="checkbox" id="shareToggle" onchange="onShareToggle()"><span class="toggle-slider"></span></label>
+      <span class="status" id="shareStatus"></span>
+      <span class="share-ip" id="shareIp"></span>
+      <button class="btn btn-clear" onclick="reloadUsers()" style="margin-left:auto;padding:4px 14px;font-size:12px;">账号生效</button>
+    </div>
+  </div>
+  <div class="card" id="shareHint" style="display:none;">
+    <span style="font-size:12px;color:var(--dim);line-height:1.6;">分享功能需先启动服务。双击 <code style="color:var(--neon);">D:\STUDIO\app\start.bat</code> 启动后，用浏览器打开 <code style="color:var(--neon);">http://localhost:3458/reports</code> 即本页，远程同事用你的内网 IP 访问（需登录）。</span>
+  </div>
+
+  <div id="reports"><div class="empty">请导入三个 Excel 文件后点击「生成报表」</div></div>
+</div>
+
+<script>
+const EXCLUDE_TYPES=["退换货","退货","换新"], DONE_STATUS=["服务完成","服务确认","服务取消"], PAGE_SIZE=10;
+
+function findCol(h,b){ for(let i=0;i<h.length;i++){ if(String(h[i]||"").trim().startsWith(b)) return i; } return -1; }
+function toDate(v){ if(v==null||v==="") return null; if(v instanceof Date) return isNaN(v)?null:v; if(typeof v==="number"){ const d=new Date((v-25569)*86400*1000); return isNaN(d)?null:d; } if(typeof v==="string"){ const d=new Date(v); return isNaN(d)?null:d; } return null; }
+function extractStar(v){ const m=String(v||"").match(/(\d+)/); return m?parseInt(m[1]):0; }
+function countBy(rows,kf,ff){ const m=new Map(); for(const r of rows){ if(ff&&!ff(r)) continue; const k=kf(r); if(!k) continue; m.set(k,(m.get(k)||0)+1); } return m; }
+function total(map){ let s=0; for(const v of map.values()) s+=v; return s; }
+function unionKeys(...maps){ const s=new Set(); for(const m of maps) for(const k of m.keys()) s.add(k); return [...s]; }
+function num(v){ return v||0; }
+function pct(n,d){ return d>0?(n/d*100).toFixed(2)+"%":"—"; }
+function localDateStr(d){ const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function rateNum(n,d){ return d>0?n/d*100:null; }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function scoreR1(n){ if(n==null)return null; if(n>=85)return 100; if(n>=75)return 80; if(n>=65)return 60; return 0; }
+function scoreR2(n){ if(n==null)return null; if(n<0.5)return 100; if(n<0.8)return 80; if(n<1.5)return 60; return 0; }
+function scoreR3(n){ if(n==null)return null; if(n>=25)return 100; if(n>=20)return 80; if(n>=15)return 60; return 0; }
+function scoreR4(n){ if(n==null)return null; if(n<3)return 100; if(n<5)return 80; if(n<8)return 60; return 0; }
+function scoreR5(n){ if(n==null)return null; if(n>75)return 100; if(n>=65)return 80; if(n>=55)return 60; return 0; }
+function scoreR6(n){ if(n==null)return null; if(n>=4.5)return 100; if(n>=4.0)return 80; if(n>=3.5)return 60; return 0; }
+function scoreClass(s){ return s==null?"":("s"+s); }
+function scoreText(s){ return s==null?"—":s; }
+function scoreColor(s){ if(s==null)return ""; return {"100":"#00e676","80":"#00d4ff","60":"#ff9a3c","0":"#ff4d6d"}[String(s)]||""; }
+
+let workRows=[], caseRows=[], evalRows=[];
+let refDate=new Date();
+let mapChart=null;
+const charts={}, pages={};
+const DATA_KEY="lan_reports_data_v1";
+function reDate(v){ if(!v) return null; const d=v instanceof Date?v:new Date(v); return isNaN(d)?null:d; }
+function saveData(){ try{ localStorage.setItem(DATA_KEY, JSON.stringify({workRows,caseRows,evalRows})); }catch(e){} }
+function loadData(){ try{ const r=localStorage.getItem(DATA_KEY); if(!r) return false; const d=JSON.parse(r); workRows=(d.workRows||[]).map(x=>({...x,resp:reDate(x.resp),done:reDate(x.done),created:reDate(x.created)})); caseRows=d.caseRows||[]; evalRows=d.evalRows||[]; return workRows.length||caseRows.length||evalRows.length; }catch(e){ return false; } }
+function reStat(){ if(!confirm("将清除已加载数据，需要重新上传 Excel。继续？")) return; localStorage.removeItem(DATA_KEY); workRows=[]; caseRows=[]; evalRows=[]; Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}}); for(const k in pages) delete pages[k]; document.getElementById("reports").innerHTML='<div class="empty">请导入三个 Excel 文件后点击「生成报表」</div>'; document.getElementById("reStatBtn").style.display="none"; document.getElementById("status").innerHTML=""; ["f1","f2","f3"].forEach(i=>document.getElementById(i).value=""); }
+
+async function generate(){
+  const f1=document.getElementById("f1").files[0], f2=document.getElementById("f2").files[0], f3=document.getElementById("f3").files[0], st=document.getElementById("status");
+  if(!f1||!f2||!f3){ st.innerHTML='<span style="color:#ff4d6d">请选择全部三个文件</span>'; return; }
+  document.getElementById("genBtn").disabled=true; st.innerHTML='<span style="color:#00d4ff">解析中...</span>';
+  try{ workRows=await parseWork(f1); caseRows=await parseCase(f2); evalRows=await parseEval(f3); saveData();
+    st.innerHTML=`<span style="color:#00e676">已加载 · 工单 ${workRows.length} 行 · case ${caseRows.length} 行 · 服务评价 ${evalRows.length} 行</span>`;
+    document.getElementById("reStatBtn").style.display="inline-block"; renderAll();
+  }catch(e){ st.innerHTML=`<span style="color:#ff4d6d">错误: ${e.message}</span>`; console.error(e); }
+  document.getElementById("genBtn").disabled=false;
+}
+function checkCols(h, bases, label){
+  const missing = bases.filter(b => findCol(h, b) < 0);
+  if(missing.length) throw new Error(`${label}缺少必需列：${missing.join("、")}`);
+}
+async function parseWork(file){ const wb=XLSX.read(await file.arrayBuffer(),{cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}); const h=rows[0]||[]; checkCols(h,["服务商","信息来源","服务类型","处理状态","响应时间","服务完成时间","创建时间","收货省份","收货城市"],"工单统计报表"); const iP=findCol(h,"服务商"),iS=findCol(h,"信息来源"),iT=findCol(h,"服务类型"),iSt=findCol(h,"处理状态"),iR=findCol(h,"响应时间"),iD=findCol(h,"服务完成时间"),iC=findCol(h,"创建时间"),iPv=findCol(h,"收货省份"),iCt=findCol(h,"收货城市"); const out=[]; for(let i=1;i<rows.length;i++){ const r=rows[i]; const p=String(r[iP]||"").trim(); if(!p) continue; out.push({provider:p,source:String(r[iS]||"").trim().toLowerCase(),type:String(r[iT]||"").trim(),status:String(r[iSt]||"").trim(),resp:toDate(r[iR]),done:toDate(r[iD]),created:toDate(r[iC]),province:String(r[iPv]||"").trim(),city:String(r[iCt]||"").trim()}); } return out; }
+async function parseCase(file){ const wb=XLSX.read(await file.arrayBuffer(),{cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}); const h=rows[0]||[]; checkCols(h,["所属代理商"],"case 统计报表"); const iP=findCol(h,"所属代理商"); const out=[]; for(let i=1;i<rows.length;i++){ const p=String(rows[i][iP]||"").trim(); if(p) out.push({provider:p}); } return out; }
+async function parseEval(file){ const wb=XLSX.read(await file.arrayBuffer(),{cellDates:true}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}); const h=rows[0]||[]; checkCols(h,["服务商","服务评价"],"服务评价报表"); const iP=findCol(h,"服务商"),iE=findCol(h,"服务评价"); const out=[]; for(let i=1;i<rows.length;i++){ const p=String(rows[i][iP]||"").trim(); if(!p) continue; out.push({provider:p,star:extractStar(rows[i][iE])}); } return out; }
+
+function calcReports(){
+  const isRepair=r=>!EXCLUDE_TYPES.includes(r.type);
+  const isRepairType=r=>r.type==="维修";
+  const isValid=r=>r.type==="维修"&&(r.status==="服务确认"||r.status==="服务完成");
+  return {
+    rRepair:countBy(workRows,r=>r.provider,isRepairType),
+    rValid:countBy(workRows,r=>r.provider,isValid),
+    r1num:countBy(workRows,r=>r.provider,r=>isRepair(r)&&r.resp&&r.created&&(r.resp-r.created)>=0&&(r.resp-r.created)<=5*60000),
+    r1den:countBy(workRows,r=>r.provider,isRepair),
+    r2case:countBy(caseRows,r=>r.provider,null),
+    r2bad:countBy(evalRows,r=>r.provider,r=>r.star>=1&&r.star<=3),
+    r2wo:countBy(workRows,r=>r.provider,isRepair),
+    r3eval:countBy(evalRows,r=>r.provider,null),
+    r3app:countBy(workRows,r=>r.provider,r=>isRepair(r)&&r.source==="app"),
+    r4over:countBy(workRows,r=>r.provider,r=>isRepair(r)&&!DONE_STATUS.includes(r.status)&&r.created&&(refDate-r.created)>=7*86400000),
+    r4den:countBy(workRows,r=>r.provider,isRepair),
+    r5done:countBy(workRows,r=>r.provider,r=>isRepair(r)&&r.status!=="服务取消"&&r.done&&r.created&&(r.done-r.created)>=0&&(r.done-r.created)<=24*3600000),
+    r5den:countBy(workRows,r=>r.provider,r=>isRepair(r)&&r.status!=="服务取消"&&r.done),
+    s1:countBy(evalRows,r=>r.provider,r=>r.star===1),s2:countBy(evalRows,r=>r.provider,r=>r.star===2),s3:countBy(evalRows,r=>r.provider,r=>r.star===3),s4:countBy(evalRows,r=>r.provider,r=>r.star===4),s5:countBy(evalRows,r=>r.provider,r=>r.star===5),
+    r6den:countBy(evalRows,r=>r.provider,null),
+    now:refDate
+  };
+}
+
+const TABS=[
+  {key:"home",name:"首页"},
+  {key:"score",name:"得分总览"},
+  {key:"r1",name:"5分钟响应率"},
+  {key:"r2",name:"投诉产生率"},
+  {key:"r3",name:"参评率"},
+  {key:"r4",name:"超期率"},
+  {key:"r5",name:"24h完成率"},
+  {key:"r6",name:"满意度"}
+];
+
+function renderAll(){
+  Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
+  for(const k in pages) delete pages[k];
+  const c=calcReports();
+  const root=document.getElementById("reports");
+  let tabBar=`<div class="tabs">`;
+  TABS.forEach((t,i)=> tabBar+=`<button class="tab ${i===0?"active":""}" onclick="switchTab('${t.key}',this)">${t.name}</button>`);
+  tabBar+=`</div>`;
+  let panes=`<div id="pane-home" class="pane active"><div class="card"><div class="report"><h2>全国维修工单分布</h2><div class="formula">各省维修工单数量（按收货省份，服务类型排除退换货/退货/换新）</div><div id="chinaMap" style="height:700px;"></div></div></div></div><div id="pane-score" class="pane"><div class="card"><div class="report"><div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;"><h2 style="margin:0;"><b>服务商得分总览</b></h2><button class="btn btn-clear" onclick="exportHome()" style="padding:5px 14px;font-size:12px;margin-left:auto;">导出 Excel</button></div><div class="formula">每个服务商 6 项指标得分明细（按总分降序）</div><div id="tblHome"></div></div></div></div>`;
+  const meta=[
+    {i:1,t:"5分钟响应率报表",f:"5分钟响应率 = 5分钟内响应工单数 / 月度维修工单量 × 100%"},
+    {i:2,t:"投诉产生率报表",f:"投诉产生率 = (月度有效投诉数 + 有效差评数量) / 月度工单数量 × 100%"},
+    {i:3,t:"参评率报表",f:"参评率 = 用户评价数量 / APP报修总量"},
+    {i:4,t:"超期率报表",f:"超期率 = 截至参考日期创建后超过7天未结工单数 / 月度维修工单量 × 100%　参考日期: <input type='date' id='refDate' value='"+localDateStr(c.now)+"' style='background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:Consolas,monospace;font-size:12px;padding:4px 8px;margin-left:6px;'> <button class='btn btn-clear' onclick='onRefDateChange(document.getElementById(\"refDate\").value)' style='padding:4px 14px;font-size:12px;margin-left:4px;'>刷新</button>"},
+    {i:5,t:"24小时完成率报表",f:"24小时完成率 = 24小时完成工单数 / 月度工单数量"},
+    {i:6,t:"满意度分值报表",f:"满意度分值 = (1×1星+2×2星+3×3星+4×4星+5×5星) / 评价量"}
+  ];
+  meta.forEach(m=>{ panes+=`<div id="pane-r${m.i}" class="pane"><div class="card report"><div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;"><h2 style="margin:0;">报表${"一二三四五六"[m.i-1]} · <b>${m.t}</b></h2><button class="btn btn-clear" onclick="exportReport('tbl${m.i}','${m.t}')" style="padding:5px 14px;font-size:12px;margin-left:auto;">导出 Excel</button></div><div class="formula">${m.f}</div><div class="report-grid"><div class="left"><div id="sum${m.i}"></div><div class="chart-box"><canvas id="chart${m.i}"></canvas></div></div><div class="right" id="tbl${m.i}"></div></div></div></div>`; });
+  root.innerHTML=tabBar+panes+`<div class="modal-overlay" id="suggestModal"><div class="modal"><h3 id="suggestTitle"></h3><div id="suggestBody" style="overflow-y:auto;"></div><div class="btn-row"><button class="btn btn-clear" onclick="closeSuggest()">关闭</button></div></div></div>`;
+  window._lastCalc=c;
+
+  renderHome(c);
+  renderMap(c);
+  renderReport1(c); renderReport2(c); renderReport3(c); renderReport4(c); renderReport5(c); renderReport6(c);
+}
+
+function switchTab(key,btn){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".pane").forEach(p=>p.classList.remove("active"));
+  document.getElementById("pane-"+key).classList.add("active");
+  if(key.startsWith("r")){ const ci="chart"+key.slice(1); if(charts[ci]) setTimeout(()=>{try{charts[ci].resize();}catch(e){}},50); }
+  if(key==="home" && mapChart){ setTimeout(()=>{try{mapChart.resize();}catch(e){}},50); }
+}
+function onRefDateChange(v){ if(!v) return; refDate=new Date(v+"T00:00:00"); if(charts.chart4){try{charts.chart4.destroy();}catch(e){}} const c=calcReports(); renderReport4(c); renderHome(c); }
+
+function summaryHtml(items){ return `<div class="summary">${items.map(it=>{ const s=it.color?` style="color:${it.color};text-shadow:0 0 6px ${it.color}66"`:""; return `<span class="item ${it.cls||""}">${it.label} <b${s}>${it.val}</b></span>`; }).join("")}</div>`; }
+
+// ---- 图表（全服务商总数）----
+function ratePie(id,n,d,numLabel,restLabel){ const el=document.getElementById(id); if(d<=0){ el.parentElement.innerHTML='<div class="empty">无数据</div>'; return; } const rest=Math.max(0,d-n); charts[id]=new Chart(el,{type:"pie",data:{labels:[`${numLabel} (${pct(n,d)})`,restLabel],datasets:[{data:[n,rest],backgroundColor:["#00e676","#3a4660"],borderWidth:1,borderColor:"#0a0e1a"}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"right",labels:{color:"#eaf0fb",font:{size:13},boxWidth:12}},tooltip:{callbacks:{label:(ctx)=>{ const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return ` ${ctx.label}: ${ctx.parsed} (${t?(ctx.parsed/t*100).toFixed(1):0}%)`; }}}}}}); }
+function starBar(id,counts){ const el=document.getElementById(id); const sum=counts.reduce((a,b)=>a+b,0); if(sum<=0){ el.parentElement.innerHTML='<div class="empty">无数据</div>'; return; } charts[id]=new Chart(el,{type:"bar",data:{labels:["1星","2星","3星","4星","5星"],datasets:[{label:"评价数量",data:counts,backgroundColor:["#ff4d6d","#ff9a3c","#ffd400","#00d4ff","#00e676"],borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#eaf0fb",font:{size:13}},grid:{display:false}},y:{beginAtZero:true,ticks:{color:"#eaf0fb",stepSize:1},grid:{color:"rgba(0,212,255,0.14)"}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:(ctx)=>` ${ctx.parsed.y} 条`}}}}}); }
+function r2Bar(c){ const el=document.getElementById("chart2"); const data=[total(c.r2case),total(c.r2bad),total(c.r2wo)]; if(data.every(v=>v===0)){ el.parentElement.innerHTML='<div class="empty">无数据</div>'; return; } charts.chart2=new Chart(el,{type:"bar",data:{labels:["月度有效投诉数","有效差评数量","月度工单数量"],datasets:[{label:"合计",data,backgroundColor:["#ff4d6d","#ff9a3c","#00d4ff"],borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:"#eaf0fb",font:{size:13}},grid:{color:"rgba(0,212,255,0.10)"}},y:{beginAtZero:true,ticks:{color:"#eaf0fb"},grid:{color:"rgba(0,212,255,0.14)"}}},plugins:{legend:{display:false}}}}); }
+
+// ---- 模糊搜索 + 分页表 ----
+function pageList(cur,total){
+  const out=[];
+  if(total<=7){ for(let i=1;i<=total;i++) out.push(i); return out; }
+  out.push(1);
+  const start=Math.max(2,cur-2), end=Math.min(total-1,cur+2);
+  if(start>2) out.push("...");
+  for(let i=start;i<=end;i++) out.push(i);
+  if(end<total-1) out.push("...");
+  out.push(total);
+  return out;
+}
+const R={v:(x,c)=>({v:x,cls:c}),raw:(html,cls)=>({raw:true,html,cls}),prov:(name)=>({raw:true,html:`<div class="prov-cell" title="${esc(name)}">${esc(name)}</div>`})};
+function filterTable(id,headers,data,opts){
+  opts=opts||{};
+  pages[id]={data,filter:"",page:1,size:PAGE_SIZE,headers,sortable:opts.sortable,sortKey:opts.defaultSort||"score",sortDir:"desc"};
+  const el=document.getElementById(id);
+  el.innerHTML=`<div class="filter-bar"><label>搜索服务商</label><input type="text" class="search-input" placeholder="输入名称模糊搜索..." oninput="setFilter('${id}',this.value)"><span class="result-count" id="${id}_count"></span></div><div id="${id}_body"></div>`;
+  renderFilterTable(id);
+}
+function renderFilterTable(id){
+  const st=pages[id]; if(!st) return;
+  const q=st.filter.toLowerCase().trim();
+  let filtered = q ? st.data.filter(r=>String(r.provider).toLowerCase().includes(q)) : st.data.slice();
+  // 排序（默认从高到低，可切换）
+  const keyFn = (st.sortable && st.sortable[st.sortKey]) ? st.sortable[st.sortKey] : (r=>r.score);
+  const dir = st.sortDir==="asc"?1:-1;
+  filtered.sort((a,b)=>{ const va=keyFn(a)??-1, vb=keyFn(b)??-1; return dir===1? va-vb : vb-va; });
+  const total2=filtered.length, totalPages=Math.ceil(total2/st.size)||1;
+  if(st.page>totalPages) st.page=totalPages;
+  const start=(st.page-1)*st.size, pageRows=filtered.slice(start,start+st.size);
+  const heads=st.headers.map(h=>{ if(h&&typeof h==="object"){ const a=st.sortKey===h.sortKey; const arrow=a?(st.sortDir==="asc"?" ▴":" ▾"):""; return `<th class="sortable ${a?'sort-active':''}" onclick="setSortKey('${id}','${h.sortKey}')">${h.label}${arrow}</th>`; } return `<th>${h}</th>`; }).join("");
+  let h=`<div class="table-scroll"><table><thead><tr>${heads}</tr></thead><tbody>`;
+  h+=pageRows.map(r=>"<tr>"+r.cells.map(cellHtml).join("")+"</tr>").join("");
+  h+=`</tbody></table></div>`;
+  h+=`<div class="pagination"><button ${st.page<=1?"disabled":""} onclick="goPage('${id}',${st.page-1})">上一页</button>`;
+  pageList(st.page,totalPages).forEach(p=>{ if(p==="..."){ h+=`<span class="page-info">…</span>`; } else { h+=`<button ${p===st.page?"disabled":""} onclick="goPage('${id}',${p})" style="${p===st.page?'border-color:var(--neon);color:var(--neon);':''}">${p}</button>`; } });
+  h+=`<button ${st.page>=totalPages?"disabled":""} onclick="goPage('${id}',${st.page+1})">下一页</button>`;
+  h+=`<span class="page-info">第 ${st.page}/${totalPages} 页 · 共 ${total2} 条</span>`;
+  h+=`<select class="size-select" onchange="setPageSize('${id}',this.value)">`;
+  [10,30,50].forEach(n=>{ h+=`<option value="${n}" ${n===st.size?"selected":""}>${n}条/页</option>`; });
+  h+=`</select></div>`;
+  document.getElementById(id+"_body").innerHTML=h;
+  const cnt=document.getElementById(id+"_count"); if(cnt) cnt.textContent=`匹配 ${total2} / 共 ${st.data.length} 家`;
+}
+function cellHtml(v){ if(v&&typeof v==="object"){ if(v.raw) return `<td class="${v.cls||""}">${v.html}</td>`; return `<td class="${v.cls||""}">${v.v}</td>`; } if(typeof v==="number"){ return `<td class="num">${v}</td>`; } if(typeof v==="string"&&v.includes("%")){ return `<td class="rate">${v}</td>`; } return `<td>${esc(v)}</td>`; }
+function setFilter(id,v){ if(!pages[id])return; pages[id].filter=v; pages[id].page=1; renderFilterTable(id); }
+function setPageSize(id,v){ if(!pages[id])return; pages[id].size=parseInt(v); pages[id].page=1; renderFilterTable(id); }
+function setSortKey(id,k){ if(!pages[id])return; if(pages[id].sortKey===k){ pages[id].sortDir = pages[id].sortDir==="asc"?"desc":"asc"; } else { pages[id].sortKey=k; pages[id].sortDir="desc"; } pages[id].page=1; renderFilterTable(id); }
+function goPage(id,p){ if(!pages[id])return; pages[id].page=p; renderFilterTable(id); }
+
+// AI 配置：模型写死不展示；API 地址和密钥在前端可改。独立包不预填默认值，由使用者自行填写。
+const AI_MODEL="deepseek-v4-flash";
+const AI_DEFAULTS={ apiKey:"", baseUrl:"" };
+const AI_KEY="lan_reports_ai";
+function loadAiSettings(){ try{ const s=Object.assign({},AI_DEFAULTS,JSON.parse(localStorage.getItem(AI_KEY))||{}); return s; }catch(e){ return {...AI_DEFAULTS}; } }
+function saveAiSettings(){
+  const s={ apiKey:document.getElementById("aiKey").value.trim(), baseUrl:document.getElementById("aiBase").value.trim() };
+  localStorage.setItem(AI_KEY,JSON.stringify(s));
+  document.getElementById("aiStatus").textContent="已保存 · "+(s.apiKey&&s.baseUrl?"AI 已启用":"AI 未配置，用规则模板");
+}
+function initAiSettings(){
+  const s=loadAiSettings();
+  document.getElementById("aiBase").value=s.baseUrl;
+  document.getElementById("aiKey").value=s.apiKey;
+}
+
+function computeMetrics(c,p){
+  const r1n=num(c.r1num.get(p)),r1d=num(c.r1den.get(p)),r1r=rateNum(r1n,r1d),r1s=scoreR1(r1r);
+  const r2c=num(c.r2case.get(p)),r2b=num(c.r2bad.get(p)),r2w=num(c.r2wo.get(p)),r2r=rateNum(r2c+r2b,r2w),r2s=scoreR2(r2r);
+  const r3e=num(c.r3eval.get(p)),r3a=num(c.r3app.get(p)),r3r=rateNum(r3e,r3a),r3s=scoreR3(r3r);
+  const r4o=num(c.r4over.get(p)),r4d=num(c.r4den.get(p)),r4r=rateNum(r4o,r4d),r4s=scoreR4(r4r);
+  const r5n=num(c.r5done.get(p)),r5d=num(c.r5den.get(p)),r5r=rateNum(r5n,r5d),r5s=scoreR5(r5r);
+  const r6w=num(c.r6den.get(p)),r6v=r6w>0?(1*num(c.s1.get(p))+2*num(c.s2.get(p))+3*num(c.s3.get(p))+4*num(c.s4.get(p))+5*num(c.s5.get(p)))/r6w:null,r6s=scoreR6(r6v);
+  return {
+    items:[
+      {metric:"5分钟响应率", rate:pct(r1n,r1d), score:scoreText(r1s), raw:r1s, target:"≥85%"},
+      {metric:"投诉产生率", rate:pct(r2c+r2b,r2w), score:scoreText(r2s), raw:r2s, target:"<0.5%"},
+      {metric:"参评率", rate:pct(r3e,r3a), score:scoreText(r3s), raw:r3s, target:"≥25%"},
+      {metric:"超期率", rate:pct(r4o,r4d), score:scoreText(r4s), raw:r4s, target:"<3%"},
+      {metric:"24小时完成率", rate:pct(r5n,r5d), score:scoreText(r5s), raw:r5s, target:">75%"},
+      {metric:"满意度分值", rate:r6v==null?"—":r6v.toFixed(2), score:scoreText(r6s), raw:r6s, target:"≥4.5"}
+    ]
+  };
+}
+function ruleBasedItems(m){
+  const guide={
+    "5分钟响应率":{target:"≥85%",causes:["接单通知未及时触达工程师","工程师未第一时间查看或响应","派单机制延迟或工单堆积"],actions:["开启即时接单通知（企微/APP推送/短信）","建立5分钟响应看板，超时实时预警","将响应时效纳入工程师月度考核","错峰排班保障高峰期接单人力"]},
+    "投诉产生率":{target:"<0.5%",causes:["维修质量不达标导致返修","服务态度或沟通问题","承诺未兑现或工期延误"],actions:["维修后增加质检环节降低返修","服务前与客户确认预期和工期","客诉工单24小时内介入处理","定期复盘投诉案例沉淀改进"]},
+    "参评率":{target:"≥25%",causes:["用户评价引导不足","评价入口不显眼","服务结束未提示评价"],actions:["工单完成后自动推送评价链接","门店或工程师口头引导评价","评价入口前置于完工通知","设置小额评价激励"]},
+    "超期率":{target:"<3%",causes:["备件调拨慢、等件超时","工程师排期紧张","复杂工单处理周期长"],actions:["备件前置铺货缩短等件时长","超期工单专人跟进与升级","拆分复杂工单分阶段交付","每周盘点7天以上未结单"]},
+    "24小时完成率":{target:">75%",causes:["响应慢导致起算晚","一次修复率低、返工","简单工单流程冗余"],actions:["提升一次修复率减少返工","简单工单走快修通道","响应与完工联动考核","盘点超24h工单原因"]},
+    "满意度分值":{target:"≥4.5",causes:["低分评价集中于服务态度或质量","1星评价未及时回访","高星级评价引导不足"],actions:["对1-2星评价24h内回访整改","培训服务话术与规范","建立低分预警与改善闭环","提炼好评案例做标杆复制"]}
+  };
+  const tier=s=> s==null?"数据不足":(s>=80?"良好，接近达标，小幅优化":s>=60?"待改进，存在明显差距，需重点提升":"较差，需立即重点整改");
+  const out=[];
+  for(const it of m.items){
+    if(it.raw!=null && it.raw<100){
+      const g=guide[it.metric];
+      out.push(`<div class="sug-item"><span class="metric">${it.metric}：${it.rate}（${it.score}分）</span>
+<div style="margin-top:6px;"><b style="color:#8aa0c0;">现状</b>：当前 ${it.rate}，得分 ${it.score}分（${tier(it.raw)}）</div>
+<div style="margin-top:6px;"><b style="color:#8aa0c0;">可能原因</b>：</div><ul style="margin:4px 0 0 20px;color:#a0adc0;">${g.causes.map(c=>`<li>${c}</li>`).join("")}</ul>
+<div style="margin-top:6px;"><b style="color:#8aa0c0;">改进措施</b>：</div><ul style="margin:4px 0 0 20px;color:#e0e8f0;">${g.actions.map(a=>`<li>${a}</li>`).join("")}</ul>
+<div style="margin-top:6px;"><b style="color:#8aa0c0;">目标</b>：${g.target}</div></div>`);
+    }
+  }
+  if(out.length===0) out.push(`<div class="sug-item">各项指标均达满分，请保持当前服务水平。</div>`);
+  return out;
+}
+async function callAI(s, m, name){
+  if(!s.baseUrl) throw new Error("未配置 AI Base URL");
+  const prompt=`你是九号公司售后运营专家。根据服务商的指标数据，给出具体可执行的整改意见。
+
+评分标准：
+- 5分钟响应率：≥85%得100分，75-85%得80分，65-75%得60分，<65%得0分
+- 投诉产生率：<0.5%得100分，0.5-0.8%得80分，0.8-1.5%得60分，≥1.5%得0分
+- 参评率：≥25%得100分，20-25%得80分，15-20%得60分，<15%得0分
+- 超期率：<3%得100分，3-5%得80分，5-8%得60分，≥8%得0分
+- 24小时完成率：>75%得100分，65-75%得80分，55-65%得60分，<55%得0分
+- 满意度分值：≥4.5得100分，4.0-4.5得80分，3.5-4.0得60分，<3.5得0分
+
+服务商：${name}
+指标数据：
+${m.items.map(it=>`- ${it.metric}: ${it.rate}（${it.score}分，目标${it.target}）`).join("\n")}
+
+针对每个未达100分的指标，给出：①现状 ②问题原因分析 ③具体可执行改进措施 ④预期提升。已满分的指标简要肯定即可。中文，专业简洁，分点说明。`;
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),30000);
+  let res;
+  try{
+    res=await fetch(`${s.baseUrl.replace(/\/+$/,"")}/chat/completions`,{
+      method:"POST",
+      headers:{ "Authorization":`Bearer ${s.apiKey}`, "Content-Type":"application/json" },
+      body:JSON.stringify({ model:AI_MODEL, messages:[ {role:"system", content:"你是九号售后运营专家，擅长分析服务商指标并给出可执行整改意见。"}, {role:"user", content:prompt} ] }),
+      signal:ctrl.signal
+    });
+  }finally{ clearTimeout(timer); }
+  if(!res.ok){ const t=await res.text(); throw new Error(`${res.status} ${t.slice(0,160)}`); }
+  const data=await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+async function showSuggestion(p){
+  const c=window._lastCalc; if(!c) return;
+  const m=computeMetrics(c,p);
+  document.getElementById("suggestTitle").textContent=p;
+  const body=document.getElementById("suggestBody");
+  document.getElementById("suggestModal").classList.add("show");
+  const s=loadAiSettings();
+  if(!s.apiKey || !s.baseUrl){
+    body.innerHTML=ruleBasedItems(m).map(i=>`<div class="sug-item">${i}</div>`).join("");
+    return;
+  }
+  body.innerHTML='<div class="sug-item" style="color:#00d4ff;">⏳ AI 分析中...</div>';
+  try{
+    const text=await callAI(s,m,p);
+    body.innerHTML=`<div class="sug-item" style="white-space:pre-wrap;line-height:1.7;">${esc(text)}</div>`;
+  }catch(e){
+    body.innerHTML=`<div class="sug-item" style="color:#ff4d6d;">AI 调用失败: ${esc(e.message)}，以下为规则模板：</div>`+ruleBasedItems(m).map(i=>`<div class="sug-item">${i}</div>`).join("");
+  }
+}
+function closeSuggest(){ document.getElementById("suggestModal").classList.remove("show"); }
+
+function exportReport(id, name){
+  const st=pages[id]; if(!st||!st.data||!st.data.length){ alert("无数据可导出"); return; }
+  let data=st.data.slice();
+  const keyFn=(st.sortable&&st.sortable[st.sortKey])?st.sortable[st.sortKey]:(r=>r.score);
+  const dir=st.sortDir==="asc"?1:-1;
+  data.sort((a,b)=>{const va=keyFn(a)??-1,vb=keyFn(b)??-1;return dir===1?va-vb:vb-va;});
+  const headers=st.headers.map(h=>(h&&typeof h==="object")?h.label:h);
+  const aoa=[headers];
+  for(const r of data){ aoa.push([r.provider].concat(r.cells.slice(1).map(c=>(c&&typeof c==="object")?c.v:c))); }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,name);
+  XLSX.writeFile(wb,name+"_"+new Date().toISOString().slice(0,16).replace("T","_").replace(/:/g,"-")+".xlsx");
+}
+
+function exportHome(){
+  const st=pages["tblHome"]; if(!st||!st.data||!st.data.length){ alert("无数据可导出"); return; }
+  let data=st.data.slice();
+  if(st.sortable&&st.sortable[st.sortKey]){ data.sort((a,b)=>((st.sortable[st.sortKey](b))??-1)-((st.sortable[st.sortKey](a))??-1)); }
+  else { data.sort((a,b)=>(b.score??-1)-(a.score??-1)); }
+  const headers=["服务商","维修单量","有效单量","5分钟响应率","得分","投诉产生率","得分","参评率","得分","超期率","得分","24h完成率","得分","总分","满意度分值"];
+  const aoa=[headers];
+  for(const r of data){
+    aoa.push([r.provider].concat(r.cells.slice(1,15).map(c=>(c&&typeof c==="object")?c.v:c)));
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=[{wch:24},{wch:10},{wch:10},{wch:12},{wch:6},{wch:12},{wch:6},{wch:12},{wch:6},{wch:12},{wch:6},{wch:12},{wch:6},{wch:8},{wch:12}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"服务商得分总览");
+  XLSX.writeFile(wb,`服务商得分总览_${new Date().toISOString().slice(0,16).replace("T","_").replace(/:/g,"-")}.xlsx`);
+}
+
+function unionProviders(c){ return unionKeys(c.r1den,c.r2wo,c.r3app,c.r4den,c.r5den,c.r6den); }
+
+function renderHome(c){
+  const provs=unionProviders(c);
+  const data=provs.map(p=>{
+    const r1n=num(c.r1num.get(p)),r1d=num(c.r1den.get(p)),r1r=rateNum(r1n,r1d),r1s=scoreR1(r1r);
+    const r2c=num(c.r2case.get(p)),r2b=num(c.r2bad.get(p)),r2w=num(c.r2wo.get(p)),r2r=rateNum(r2c+r2b,r2w),r2s=scoreR2(r2r);
+    const r3e=num(c.r3eval.get(p)),r3a=num(c.r3app.get(p)),r3r=rateNum(r3e,r3a),r3s=scoreR3(r3r);
+    const r4o=num(c.r4over.get(p)),r4d=num(c.r4den.get(p)),r4r=rateNum(r4o,r4d),r4s=scoreR4(r4r);
+    const r5n=num(c.r5done.get(p)),r5d=num(c.r5den.get(p)),r5r=rateNum(r5n,r5d),r5s=scoreR5(r5r);
+    const r6w=num(c.r6den.get(p)),r6v=r6w>0?(1*num(c.s1.get(p))+2*num(c.s2.get(p))+3*num(c.s3.get(p))+4*num(c.s4.get(p))+5*num(c.s5.get(p)))/r6w:null,r6s=scoreR6(r6v);
+    const repair=num(c.rRepair.get(p)),valid=num(c.rValid.get(p));
+    const total=(r1s||0)*0.15+(r5s||0)*0.25+(r2s||0)*0.25+(r3s||0)*0.20+(r4s||0)*0.15;
+    const scores={r1:r1s,r2:r2s,r3:r3s,r4:r4s,r5:r5s,r6:r6s,total,repair,valid};
+    return {provider:p,score:total,scores,cells:[
+      R.prov(p),
+      repair,valid,
+      R.v(pct(r1n,r1d),"rate"),R.v(scoreText(r1s),scoreClass(r1s)),
+      R.v(pct(r2c+r2b,r2w),"rate"),R.v(scoreText(r2s),scoreClass(r2s)),
+      R.v(pct(r3e,r3a),"rate"),R.v(scoreText(r3s),scoreClass(r3s)),
+      R.v(pct(r4o,r4d),"rate"),R.v(scoreText(r4s),scoreClass(r4s)),
+      R.v(pct(r5n,r5d),"rate"),R.v(scoreText(r5s),scoreClass(r5s)),
+      R.v(total.toFixed(1),"total"),
+      R.v(r6v==null?"—":r6v.toFixed(2),"rate"),
+      R.raw(`<button class="btn-suggest" data-p="${esc(p)}" onclick="showSuggestion(this.dataset.p)">意见</button>`,"")
+    ]};
+  });
+  const headers=["服务商",{label:"维修单量",sortKey:"repair"},{label:"有效单量",sortKey:"valid"},"5分钟响应率",{label:"得分",sortKey:"r1"},"投诉产生率",{label:"得分",sortKey:"r2"},"参评率",{label:"得分",sortKey:"r3"},"超期率",{label:"得分",sortKey:"r4"},"24h完成率",{label:"得分",sortKey:"r5"},{label:`总分 <span class="qmark" data-tip="总分 = 5分钟响应率得分×15% + 24小时完成率得分×25% + 投诉产生率得分×25% + 参评率得分×20% + 超期率得分×15%">?</span>`,sortKey:"total"},"满意度分值","意见"];
+  filterTable("tblHome",headers,data,{defaultSort:"total",sortable:{r1:r=>r.scores.r1,r2:r=>r.scores.r2,r3:r=>r.scores.r3,r4:r=>r.scores.r4,r5:r=>r.scores.r5,r6:r=>r.scores.r6,total:r=>r.scores.total,repair:r=>r.scores.repair,valid:r=>r.scores.valid}});
+}
+
+function normalizeProvince(p){
+  if(!p) return null;
+  const map={"上海":"上海市","北京":"北京市","天津":"天津市","重庆":"重庆市","内蒙古":"内蒙古自治区","广西":"广西壮族自治区","宁夏":"宁夏回族自治区","新疆":"新疆维吾尔自治区","西藏":"西藏自治区","香港":"香港特别行政区","澳门":"澳门特别行政区","台湾":"台湾省"};
+  return map[p]||p;
+}
+async function renderMap(c){
+  const el=document.getElementById("chinaMap"); if(!el||typeof echarts==="undefined") return;
+  if(mapChart){ try{mapChart.dispose();}catch(e){} mapChart=null; }
+  const m=new Map();
+  for(const r of workRows){ if(EXCLUDE_TYPES.includes(r.type)) continue; const np=normalizeProvince(r.province); if(!np) continue; m.set(np,(m.get(np)||0)+1); }
+  const data=[...m.entries()].map(([name,value])=>({name,value}));
+  const maxV=Math.max(...data.map(d=>d.value),1);
+  const raw=window.CHINA_GEO;
+  if(!raw){ el.innerHTML='<div class="empty">地图数据未加载（缺少 china.js）</div>'; return; }
+  const geo={type:raw.type,features:(raw.features||[]).filter(f=>{ const p=f.properties||{}; const s=JSON.stringify(p); if(s.includes("南海诸岛")||s.includes("海南诸岛")||s.includes("三沙")) return false; const n=p.name; if(!n||String(n).trim()==="") return false; return true; })};
+  echarts.registerMap("china",geo);
+  mapChart=echarts.init(el);
+  mapChart.setOption({
+    tooltip:{ trigger:"item", formatter:p=> (p.name||"未知")+"："+(p.value||0)+" 单" },
+    visualMap:{ min:0, max:maxV, left:30, bottom:30, calculable:true, text:["高","低"], textStyle:{color:"#9fb0cc"}, inRange:{color:["#0a1a3a","#00337a","#0066ff","#00d4ff","#00e676"]} },
+    series:[{ name:"维修工单", type:"map", map:"china", roam:true, layoutCenter:["50%","50%"], layoutSize:"100%", label:{show:true,color:"#cfe0f5",fontSize:9}, data, itemStyle:{areaColor:"#16223a",borderColor:"#2a3a5a",borderWidth:0.5}, emphasis:{label:{color:"#fff",fontSize:10},itemStyle:{areaColor:"#0066ff",borderColor:"#00d4ff"}}, select:{itemStyle:{areaColor:"#0066ff"}} }]
+  });
+}
+
+function renderReport1(c){ const n=total(c.r1num),d=total(c.r1den),r=rateNum(n,d),s=scoreR1(r); document.getElementById("sum1").innerHTML=summaryHtml([{label:"5分钟内响应数",val:n},{label:"月度维修工单量",val:d},{label:"5分钟响应率",val:pct(n,d)}]); ratePie("chart1",n,d,"5分钟内响应","未在5分钟内响应"); const data=[...c.r1den.keys()].map(p=>{ const a=num(c.r1num.get(p)),b=num(c.r1den.get(p)),rr=rateNum(a,b),ss=scoreR1(rr); return {provider:p,score:ss,cells:[R.prov(p),a,b,R.v(pct(a,b),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl1",["服务商","5分钟内响应数","月度维修工单量","5分钟响应率",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+function renderReport2(c){ const cs=total(c.r2case),bd=total(c.r2bad),wo=total(c.r2wo),r=rateNum(cs+bd,wo),s=scoreR2(r); document.getElementById("sum2").innerHTML=summaryHtml([{label:"月度有效投诉数",val:cs},{label:"有效差评数量",val:bd},{label:"月度工单数量",val:wo},{label:"投诉产生率",val:pct(cs+bd,wo)}]); r2Bar(c); const data=[...c.r2wo.keys()].map(p=>{ const a=num(c.r2case.get(p)),b=num(c.r2bad.get(p)),w=num(c.r2wo.get(p)),rr=rateNum(a+b,w),ss=scoreR2(rr); return {provider:p,score:ss,cells:[R.prov(p),a,b,w,R.v(pct(a+b,w),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl2",["服务商","月度有效投诉数","有效差评数量","月度工单数量","投诉产生率",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+function renderReport3(c){ const ev=total(c.r3eval),ap=total(c.r3app),r=rateNum(ev,ap),s=scoreR3(r); document.getElementById("sum3").innerHTML=summaryHtml([{label:"用户评价数量",val:ev},{label:"APP报修总量",val:ap},{label:"参评率",val:pct(ev,ap)}]); ratePie("chart3",ev,ap,"用户评价","未评价"); const data=[...c.r3app.keys()].map(p=>{ const a=num(c.r3eval.get(p)),b=num(c.r3app.get(p)),rr=rateNum(a,b),ss=scoreR3(rr); return {provider:p,score:ss,cells:[R.prov(p),a,b,R.v(pct(a,b),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl3",["服务商","用户评价数量","APP报修总量","参评率",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+function renderReport4(c){ const ov=total(c.r4over),dn=total(c.r4den),r=rateNum(ov,dn),s=scoreR4(r); document.getElementById("sum4").innerHTML=summaryHtml([{label:"超过7天未结数",val:ov},{label:"月度维修工单量",val:dn},{label:"超期率",val:pct(ov,dn)}]); ratePie("chart4",ov,dn,"超过7天未结","未超期"); const data=[...c.r4den.keys()].map(p=>{ const a=num(c.r4over.get(p)),b=num(c.r4den.get(p)),rr=rateNum(a,b),ss=scoreR4(rr); return {provider:p,score:ss,cells:[R.prov(p),a,b,R.v(pct(a,b),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl4",["服务商","超过7天未结数","月度维修工单量","超期率",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+function renderReport5(c){ const dn=total(c.r5done),dd=total(c.r5den),r=rateNum(dn,dd),s=scoreR5(r); document.getElementById("sum5").innerHTML=summaryHtml([{label:"24小时完成数",val:dn},{label:"月度工单数量",val:dd},{label:"24小时完成率",val:pct(dn,dd)}]); ratePie("chart5",dn,dd,"24小时完成","未在24小时完成"); const data=[...c.r5den.keys()].map(p=>{ const a=num(c.r5done.get(p)),b=num(c.r5den.get(p)),rr=rateNum(a,b),ss=scoreR5(rr); return {provider:p,score:ss,cells:[R.prov(p),a,b,R.v(pct(a,b),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl5",["服务商","24小时完成数","月度工单数量","24小时完成率",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+function renderReport6(c){ const a=total(c.s1),b=total(c.s2),cc=total(c.s3),d=total(c.s4),e=total(c.s5),dn=total(c.r6den); const score=dn>0?(1*a+2*b+3*cc+4*d+5*e)/dn:null,s=scoreR6(score); document.getElementById("sum6").innerHTML=summaryHtml([{label:"评价量",val:dn},{label:"满意度分值",val:dn>0?score.toFixed(2):"—"}]); starBar("chart6",[a,b,cc,d,e]); const data=[...c.r6den.keys()].map(p=>{ const a2=num(c.s1.get(p)),b2=num(c.s2.get(p)),c2=num(c.s3.get(p)),d2=num(c.s4.get(p)),e2=num(c.s5.get(p)),w=num(c.r6den.get(p)); const sv=w>0?(1*a2+2*b2+3*c2+4*d2+5*e2)/w:null; const ss=scoreR6(sv); return {provider:p,score:ss,cells:[R.prov(p),a2,b2,c2,d2,e2,w,R.v(sv==null?"—":sv.toFixed(2),"rate"),R.v(scoreText(ss),scoreClass(ss))]}; }); filterTable("tbl6",["服务商","1星","2星","3星","4星","5星","评价量","满意度分值",{label:"得分",sortKey:"score"}],data,{defaultSort:"score",sortable:{score:r=>r.score}}); }
+
+// 网络共享（由 lan-share 服务端提供 /api/share/* 接口）
+async function refreshShareStatus(){
+  const isLocal = window.location.hostname==="localhost"||window.location.hostname==="127.0.0.1";
+  try{
+    const r=await fetch("/api/status"); if(!r.ok) throw new Error(); const d=await r.json();
+    document.getElementById("shareHint").style.display="none";
+    if(isLocal){
+      document.getElementById("shareCard").style.display="";
+      document.getElementById("logoutBtn").style.display="none";
+      document.getElementById("shareToggle").checked = !!d.sharing;
+      document.getElementById("shareStatus").innerHTML = d.sharing ? '<span class="dot on"></span>已开启，远程可访问（需登录）' : '<span class="dot off"></span>已关闭';
+      document.getElementById("shareIp").textContent = (d.ips&&d.ips.length) ? d.ips.map(i=>"http://"+i+":3458/login.html").join("   ") : "";
+    } else {
+      document.getElementById("shareCard").style.display="none";
+      document.getElementById("logoutBtn").style.display="";
+    }
+  }catch(e){
+    // file://（双击打开）无服务器，隐藏分享模块；http 本地但无服务时给提示
+    if(window.location.protocol==="file:"){
+      document.getElementById("shareCard").style.display="none";
+      document.getElementById("shareHint").style.display="none";
+      document.getElementById("logoutBtn").style.display="none";
+    } else if(isLocal){
+      document.getElementById("shareHint").style.display="";
+    }
+  }
+}
+function logout(){ fetch("/api/logout"); window.location.href="/login.html"; }
+async function reloadUsers(){ try{ const r=await fetch("/api/reload-users",{method:"POST"}); const d=await r.json(); alert(`账号已重新加载，共 ${d.count} 个`); }catch(e){ alert("加载失败: "+e.message); } }
+async function onShareToggle(){
+  const t=document.getElementById("shareToggle");
+  t.disabled=true;
+  try{ await fetch(`/api/${t.checked?"start":"stop"}`,{method:"POST"}); }catch(e){}
+  t.disabled=false;
+  refreshShareStatus();
+}
+
+(function init(){
+  initAiSettings();
+  refreshShareStatus();
+  if(loadData()){
+    document.getElementById("status").innerHTML=`<span style="color:#00e676">已从缓存加载 · 工单 ${workRows.length} 行 · case ${caseRows.length} 行 · 服务评价 ${evalRows.length} 行</span>`;
+    document.getElementById("reStatBtn").style.display="inline-block"; renderAll();
+  }
+})();
+</script>
+</body>
+</html>
