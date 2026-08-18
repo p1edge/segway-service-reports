@@ -376,7 +376,7 @@ function goPage(id,p){ if(!pages[id])return; pages[id].page=p; renderFilterTable
 
 // AI 配置：模型写死不展示；API 地址和密钥在前端可改。独立包不预填默认值，由使用者自行填写。
 const AI_MODEL="deepseek-v4-flash";
-const AI_DEFAULTS={ apiKey:"", baseUrl:"" };
+const AI_DEFAULTS={ apiKey:"", baseUrl:"https://ai-service.segway-ninebot.com/v1" };
 const AI_KEY="lan_reports_ai";
 function loadAiSettings(){ try{ const s=Object.assign({},AI_DEFAULTS,JSON.parse(localStorage.getItem(AI_KEY))||{}); return s; }catch(e){ return {...AI_DEFAULTS}; } }
 function saveAiSettings(){
