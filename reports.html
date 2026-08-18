@@ -113,7 +113,7 @@ th.sort-active { color:#00e676; text-shadow:0 0 6px rgba(0,230,118,0.4); }
 <body>
 <div class="container">
   <button class="logout-fixed" id="logoutBtn" style="display:none;" onclick="logout()">退出登录</button>
-  <h1>国内短交通服务商 <b>指标报表</b></h1>
+  <h1>国内短交通服务商 <b>指标报表</b> <button class="btn btn-clear" onclick="showGuide()" style="padding:5px 16px;font-size:12px;margin-left:8px;vertical-align:middle;">操作说明</button></h1>
 
   <div class="card">
     <div class="upload">
@@ -147,6 +147,46 @@ th.sort-active { color:#00e676; text-shadow:0 0 6px rgba(0,230,118,0.4); }
   </div>
   <div class="card" id="shareHint" style="display:none;">
     <span style="font-size:12px;color:var(--dim);line-height:1.6;">分享功能需先启动服务。双击 <code style="color:var(--neon);">D:\STUDIO\app\start.bat</code> 启动后，用浏览器打开 <code style="color:var(--neon);">http://localhost:3458/reports</code> 即本页，远程同事用你的内网 IP 访问（需登录）。</span>
+  </div>
+
+  <div class="modal-overlay" id="guideModal">
+    <div class="modal" style="width:620px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="font-size:16px;color:var(--neon);letter-spacing:1px;">操作说明</h3>
+        <button class="btn btn-clear" onclick="closeGuide()" style="padding:4px 14px;font-size:12px;">关闭</button>
+      </div>
+      <div style="overflow-y:auto;max-height:60vh;font-size:13px;line-height:1.8;color:var(--text);">
+        <div style="margin-bottom:14px;">
+          <b style="color:var(--neon);">① 导入文件</b><br>
+          点击页面顶部「选择文件」按钮，分别导入三个 Excel 文件：<br>
+          · <b>工单统计报表</b>：DMS 系统的作业工单实体下载<br>
+          · <b>case 统计报表</b>：DMS 系统的客服 case 实体下载<br>
+          · <b>服务评价报表</b>：DMS 系统的服务评价实体下载<br>
+          导入文件可以在 DMS 系统的作业工单、客服 case、服务评价实体下载。<br>
+          <span style="color:var(--dim);">导入后点「生成报表」，数据存浏览器缓存，刷新不丢；点「重新统计」清空重传。</span>
+        </div>
+        <div style="margin-bottom:14px;">
+          <b style="color:var(--neon);">② 报表查看</b><br>
+          顶部 tab 切换 6 张报表（5分钟响应率 / 投诉产生率 / 参评率 / 超期率 / 24h完成率 / 满意度），首页有全国维修工单地图分布，得分总览 tab 有服务商 6 项指标得分明细。
+        </div>
+        <div style="margin-bottom:14px;">
+          <b style="color:var(--neon);">③ 排序与筛选</b><br>
+          每张表的表头可点击排序（默认从高到低，再点从低到高），搜索框模糊搜索服务商，可切换每页 10/30/50 条。
+        </div>
+        <div style="margin-bottom:14px;">
+          <b style="color:var(--neon);">④ 整改意见</b><br>
+          得分总览表每行有「意见」按钮，点击弹出该服务商的整改建议。页面顶部填 AI 地址+密钥后调 AI 生成；留空用规则模板。
+        </div>
+        <div style="margin-bottom:14px;">
+          <b style="color:var(--neon);">⑤ 导出 Excel</b><br>
+          每张报表标题右侧有「导出 Excel」按钮，导出当前报表全量数据（按当前排序）。
+        </div>
+        <div>
+          <b style="color:var(--neon);">⑥ 参考日期</b><br>
+          报表四（超期率）可修改参考日期，点「刷新」重算超期率（按所选日期距今≥7天判定）。
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="reports"><div class="empty">请导入三个 Excel 文件后点击「生成报表」</div></div>
@@ -567,6 +607,8 @@ async function refreshShareStatus(){
   }
 }
 function logout(){ fetch("/api/logout"); window.location.href="/login.html"; }
+function showGuide(){ document.getElementById("guideModal").classList.add("show"); }
+function closeGuide(){ document.getElementById("guideModal").classList.remove("show"); }
 async function reloadUsers(){ try{ const r=await fetch("/api/reload-users",{method:"POST"}); const d=await r.json(); alert(`账号已重新加载，共 ${d.count} 个`); }catch(e){ alert("加载失败: "+e.message); } }
 async function onShareToggle(){
   const t=document.getElementById("shareToggle");
