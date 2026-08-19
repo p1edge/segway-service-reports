@@ -475,7 +475,7 @@ ${m.items.map(it=>`- ${it.metric}: ${it.rate}（${it.score}分，目标${it.targ
 
 针对每个未达100分的指标，给出：①现状 ②问题原因分析 ③具体可执行改进措施 ④预期提升。已满分的指标简要肯定即可。中文，专业简洁，分点说明。`;
   const ctrl=new AbortController();
-  const timer=setTimeout(()=>ctrl.abort(),30000);
+  const timer=setTimeout(()=>ctrl.abort(),60000);
   let res;
   try{
     res=await fetch(`${s.baseUrl.replace(/\/+$/,"")}/chat/completions`,{
