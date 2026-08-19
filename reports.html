@@ -128,8 +128,9 @@ th.sort-active { color:#00e676; text-shadow:0 0 6px rgba(0,230,118,0.4); }
 
   <div class="card">
     <div class="upload">
-      <div class="file"><label>API 地址</label><input type="text" id="aiBase" style="width:280px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;"></div>
-      <div class="file"><label>密钥</label><input type="password" id="aiKey" style="width:280px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:Consolas,monospace;"></div>
+      <div class="file"><label>API 地址</label><input type="text" id="aiBase" onchange="fetchModels()" style="width:260px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;"></div>
+      <div class="file"><label>AI 模型</label><select id="aiModel" onchange="saveAiSettings()" style="width:320px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;"><option value="">先填写地址获取</option></select></div>
+      <div class="file"><label>密钥</label><input type="password" id="aiKey" style="width:200px;padding:7px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:Consolas,monospace;"></div>
       <button class="btn btn-clear" onclick="saveAiSettings()" style="padding:7px 16px;font-size:12px;">保存</button>
       <span class="status" id="aiStatus" style="font-size:11px;"></span>
     </div>
@@ -374,20 +375,42 @@ function setPageSize(id,v){ if(!pages[id])return; pages[id].size=parseInt(v); pa
 function setSortKey(id,k){ if(!pages[id])return; if(pages[id].sortKey===k){ pages[id].sortDir = pages[id].sortDir==="asc"?"desc":"asc"; } else { pages[id].sortKey=k; pages[id].sortDir="desc"; } pages[id].page=1; renderFilterTable(id); }
 function goPage(id,p){ if(!pages[id])return; pages[id].page=p; renderFilterTable(id); }
 
-// AI 配置：模型写死不展示；API 地址和密钥在前端可改。独立包不预填默认值，由使用者自行填写。
-const AI_MODEL="deepseek-v4-flash";
+// AI 配置：模型从网关 /v1/models 动态获取下拉选择；API 地址改了重新拉模型列表。
 const AI_DEFAULTS={ apiKey:"", baseUrl:"https://ai-service.segway-ninebot.com/v1" };
 const AI_KEY="lan_reports_ai";
 function loadAiSettings(){ try{ const s=Object.assign({},AI_DEFAULTS,JSON.parse(localStorage.getItem(AI_KEY))||{}); return s; }catch(e){ return {...AI_DEFAULTS}; } }
 function saveAiSettings(){
-  const s={ apiKey:document.getElementById("aiKey").value.trim(), baseUrl:document.getElementById("aiBase").value.trim() };
+  const s={ apiKey:document.getElementById("aiKey").value.trim(), baseUrl:document.getElementById("aiBase").value.trim(), model:document.getElementById("aiModel").value };
   localStorage.setItem(AI_KEY,JSON.stringify(s));
-  document.getElementById("aiStatus").textContent="已保存 · "+(s.apiKey&&s.baseUrl?"AI 已启用":"AI 未配置，用规则模板");
+  document.getElementById("aiStatus").textContent="已保存 · "+(s.apiKey&&s.baseUrl&&s.model?"AI 已启用":"AI 未配置，用规则模板");
+}
+async function fetchModels(){
+  const sel=document.getElementById("aiModel");
+  const base=document.getElementById("aiBase").value.trim();
+  const key=document.getElementById("aiKey").value.trim();
+  sel.innerHTML='<option value="">加载中...</option>';
+  if(!base||!key){ sel.innerHTML='<option value="">先填写地址和密钥</option>'; return; }
+  try{
+    const r=await fetch(base.replace(/\/+$/,"")+"/models",{headers:{"Authorization":"Bearer "+key}});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    const models=(d.data||d||[]).map(m=>m.id||m).filter(Boolean);
+    if(!models.length) throw new Error("模型列表为空");
+    sel.innerHTML=models.map(m=>`<option value="${m}">${m}</option>`).join("");
+    // 默认选含 deepseek v4 flash 的，没有再用之前存的，都没有选第一个
+    const def=models.find(m=>/deepseek.*v.*4.*flash/i.test(m))||models.find(m=>/deepseek.*flash/i.test(m));
+    const saved=loadAiSettings();
+    if(def){ sel.value=def; }
+    else if(saved.model&&models.includes(saved.model)){ sel.value=saved.model; }
+  }catch(e){
+    sel.innerHTML='<option value="">无法获取模型，请检验API地址是否正确</option>';
+  }
 }
 function initAiSettings(){
   const s=loadAiSettings();
   document.getElementById("aiBase").value=s.baseUrl;
   document.getElementById("aiKey").value=s.apiKey;
+  fetchModels();
 }
 
 function computeMetrics(c,p){
@@ -434,6 +457,8 @@ function ruleBasedItems(m){
 }
 async function callAI(s, m, name){
   if(!s.baseUrl) throw new Error("未配置 AI Base URL");
+  const model=document.getElementById("aiModel")?.value || s.model;
+  if(!model) throw new Error("未选择 AI 模型");
   const prompt=`你是九号公司售后运营专家。根据服务商的指标数据，给出具体可执行的整改意见。
 
 评分标准：
@@ -456,7 +481,7 @@ ${m.items.map(it=>`- ${it.metric}: ${it.rate}（${it.score}分，目标${it.targ
     res=await fetch(`${s.baseUrl.replace(/\/+$/,"")}/chat/completions`,{
       method:"POST",
       headers:{ "Authorization":`Bearer ${s.apiKey}`, "Content-Type":"application/json" },
-      body:JSON.stringify({ model:AI_MODEL, messages:[ {role:"system", content:"你是九号售后运营专家，擅长分析服务商指标并给出可执行整改意见。"}, {role:"user", content:prompt} ] }),
+      body:JSON.stringify({ model, messages:[ {role:"system", content:"你是九号售后运营专家，擅长分析服务商指标并给出可执行整改意见。"}, {role:"user", content:prompt} ] }),
       signal:ctrl.signal
     });
   }finally{ clearTimeout(timer); }
@@ -480,7 +505,7 @@ async function showSuggestion(p){
     const text=await callAI(s,m,p);
     body.innerHTML=`<div class="sug-item" style="white-space:pre-wrap;line-height:1.7;">${esc(text)}</div>`;
   }catch(e){
-    body.innerHTML=`<div class="sug-item" style="color:#ff4d6d;">AI 调用失败: ${esc(e.message)}，以下为规则模板：</div>`+ruleBasedItems(m).map(i=>`<div class="sug-item">${i}</div>`).join("");
+    body.innerHTML=`<div class="sug-item" style="color:#ff4d6d;">${e.name==="AbortError"?"AI 调用超时":"AI 调用失败: "+esc(e.message)}，以下为规则模板：</div>`+ruleBasedItems(m).map(i=>`<div class="sug-item">${i}</div>`).join("");
   }
 }
 function closeSuggest(){ document.getElementById("suggestModal").classList.remove("show"); }
@@ -544,7 +569,7 @@ function renderHome(c){
       R.raw(`<button class="btn-suggest" data-p="${esc(p)}" onclick="showSuggestion(this.dataset.p)">意见</button>`,"")
     ]};
   });
-  const headers=["服务商",{label:"维修单量",sortKey:"repair"},{label:"有效单量",sortKey:"valid"},"5分钟响应率",{label:"得分",sortKey:"r1"},"投诉产生率",{label:"得分",sortKey:"r2"},"参评率",{label:"得分",sortKey:"r3"},"超期率",{label:"得分",sortKey:"r4"},"24h完成率",{label:"得分",sortKey:"r5"},{label:`总分 <span class="qmark" data-tip="总分 = 5分钟响应率得分×15% + 24小时完成率得分×25% + 投诉产生率得分×25% + 参评率得分×20% + 超期率得分×15%">?</span>`,sortKey:"total"},"满意度分值","意见"];
+  const headers=["服务商",{label:"维修单量",sortKey:"repair"},{label:"有效单量",sortKey:"valid"},"5分钟响应率",{label:"得分",sortKey:"r1"},"投诉产生率",{label:"得分",sortKey:"r2"},"参评率",{label:"得分",sortKey:"r3"},"超期率",{label:"得分",sortKey:"r4"},"24h完成率",{label:"得分",sortKey:"r5"},{label:`总分 <span class="qmark" data-tip="总分 = 5分钟响应率得分×15% + 24小时完成率得分×25% + 投诉产生率得分×25% + 参评率得分×20% + 超期率得分×15%">?</span>`,sortKey:"total"},"满意度分值","整改意见"];
   filterTable("tblHome",headers,data,{defaultSort:"total",sortable:{r1:r=>r.scores.r1,r2:r=>r.scores.r2,r3:r=>r.scores.r3,r4:r=>r.scores.r4,r5:r=>r.scores.r5,r6:r=>r.scores.r6,total:r=>r.scores.total,repair:r=>r.scores.repair,valid:r=>r.scores.valid}});
 }
 
