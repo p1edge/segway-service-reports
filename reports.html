@@ -376,7 +376,7 @@ function setSortKey(id,k){ if(!pages[id])return; if(pages[id].sortKey===k){ page
 function goPage(id,p){ if(!pages[id])return; pages[id].page=p; renderFilterTable(id); }
 
 // AI 配置：模型从网关 /v1/models 动态获取下拉选择；API 地址改了重新拉模型列表。
-const AI_DEFAULTS={ apiKey:"", baseUrl:"https://ai-service.segway-ninebot.com/v1" };
+const AI_DEFAULTS={ apiKey:"", baseUrl:"" };
 const AI_KEY="lan_reports_ai";
 function loadAiSettings(){ try{ const s=Object.assign({},AI_DEFAULTS,JSON.parse(localStorage.getItem(AI_KEY))||{}); return s; }catch(e){ return {...AI_DEFAULTS}; } }
 function saveAiSettings(){
